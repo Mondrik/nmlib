@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
+# -*-me as above coding: utf-8 -*-
 """
 Created on Mon Jan 11 12:47:10 2016
-
+i
 @author: nmondrik
 """
 ##IN TESTING...
@@ -10,6 +10,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pymc3 as pm
 import theano.tensor as T
+import emcee
+import scipy.optimize as op
 
 def select_sampler(sampler,start=None):
     if sampler == "NUTS":
@@ -78,3 +80,60 @@ def plot_lin_model(ax,trace):
     
     ax.plot(xf,mu,'--k',lw=2,label='Posterior mean')
     ax.fill_between(xf, mu-sig, mu+sig, color='lightgray')
+
+def emcee_test(t, y, yerr, samples=10000, burn=0):
+    def lnprior(theta):
+        m, b = theta
+        if -5.0 < m < 0.5 and 0.0 < b < 10.0:
+            return 0.0
+        return -np.inf
+    def lnlike(theta, t, y, yerr):
+        m, b = theta
+        model = m * t + b
+        ivar = 1.0/(yerr**2)
+        return -0.5*(np.sum((y-model)**2*ivar))
+    def lnprob(theta, t, y, yerr):
+        lp = lnprior(theta)
+        if not np.isfinite(lp):
+            return -np.inf
+        return lp + lnlike(theta, t, y, yerr)
+    nll = lambda *args: -lnlike(*args)
+    result = op.minimize(nll, [0.42,0.1], args=(t,y,yerr))
+    mml, bml = result["x"]
+    ndim, nwalkers = 2, 100
+    print result["x"]
+    pos = [result["x"] + 1e-4*np.random.randn(ndim) for i in range(nwalkers)]
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob, args=(t, y, yerr))
+    sampler.run_mcmc(pos, samples)
+    sam = sampler.chain[:, burn:, :].reshape((-1, ndim))
+    return sam
+
+def emcee_test_sin(t, y, yerr, samples=10000, burn=0, nwalkers=100):
+    def lnprior(theta):
+        A, omega, phi, offset = theta
+        if 0 < A < 10 and 0.01 < omega < 100. and 0 < phi < 2*np.pi and 0 < offset < 0.5:
+            return 0.0
+        return -np.inf
+    def lnlike(theta, t, y, yerr):
+        A, omega, phi, offset = theta
+        model = A*np.sin(omega*t+phi) + offset
+        ivar = 1.0/(yerr**2)
+        return -0.5*(np.sum((y-model)**2*ivar))
+    def lnprob(theta, t, y, yerr):
+        lp = lnprior(theta)
+        if not np.isfinite(lp):
+            return -np.inf
+        return lp + lnlike(theta, t, y, yerr)
+    nll = lambda *args: -lnlike(*args)
+#    ini = [[np.random.uniform(low=0,high=10),np.random.uniform(low=0.01,high=100),np.random.uniform(low=0,high=2*np.pi),np.random.uniform(low=0,high=0.5)] for i in range(nwalkers)]
+    ini = [0.02,0.12566,np.pi/2.,0.]
+    result = op.minimize(nll, ini, args=(t,y, yerr))
+    ndim = 4
+    print result["x"]
+    pos = [result["x"] + 1e-4*np.random.randn(ndim) for i in range(nwalkers)]
+#    pos = ini
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob, args=(t, y, yerr))
+    sampler.run_mcmc(pos, samples)
+    sam = sampler.chain[:, burn:, :].reshape((-1, ndim))
+    return sam
+    
