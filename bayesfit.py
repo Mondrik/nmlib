@@ -136,4 +136,31 @@ def emcee_test_sin(t, y, yerr, samples=10000, burn=0, nwalkers=100):
     sampler.run_mcmc(pos, samples)
     sam = sampler.chain[:, burn:, :].reshape((-1, ndim))
     return sam
-    
+
+def emcee_gaussian(t, y, yerr=None, samples=10000, burn=1000, nwalkers=100):
+    def lnprior(theta):
+        A, mu, sig, off, sigdat = theta
+        if 0 < A < 66000 and np.min(t) < mu < np.max(t) and -1000. < off < 1000. and 0 < sig < 10 and 100 < sigdat < 500:
+            return -np.log(sig) - np.log(sigdat)
+        else:
+            return -np.inf
+    def lnlike(theta, t, y):
+        A, mu, sig, off, sigdat = theta
+        model = A * np.exp(-0.5*((t-mu)/sig)**2.) + off
+        return -0.5*np.sum(((y-model)/sigdat)**2.)
+    def lnprob(theta, t, y):
+        lp = lnprior(theta)
+        if not np.isfinite(lp):
+            return -np.inf
+        return lp + lnlike(theta, t, y)
+    nll = lambda *args: -lnlike(*args)
+    ini = [np.max(y), 17. , 2., 0., 120]
+    #result = op.minimize(nll,ini,args=(t,y))
+    #print result
+    ndim = 5
+    pos = [ini + np.random.normal(loc=0,scale=0.5,size=ndim)  for i in range(nwalkers)]
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob, args=(t,y))
+    sampler.run_mcmc(pos,samples )
+    sam = sampler.chain[:, burn:, :].reshape((-1,ndim))
+    print sam
+    return sam
